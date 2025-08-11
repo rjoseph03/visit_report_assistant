@@ -1,9 +1,15 @@
 import datetime
 from pydantic import BaseModel, Field
+from enum import Enum
 from typing import Optional
 
 
 class VisitReport(BaseModel):
+    class Division(str, Enum):
+        ECHAIN = "e-chain"
+        BEARINGS = "bearings"
+        ECHAIN_BEARINGS = "e-chain&bearings"
+
     account_name: str = Field(..., description="Company the meeting was with.")
     primary_contact: str = Field(
         ..., description="Primary contact person for the meeting."
@@ -13,7 +19,7 @@ class VisitReport(BaseModel):
         ...,
         description="Location of the meeting. Main options: remote, client, igus, other.",
     )
-    division: str = Field(
+    division: Division = Field(
         ...,
         description="Division involved. Main options: e-chain, bearings, e-chain&bearings.",
     )

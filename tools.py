@@ -38,6 +38,7 @@ def find_account_by_name(account_name: str) -> dict:
     matched = [
         {"name": "igus GmbH", "id": "A001"},
         {"name": "igus North America", "id": "A002"},
+        {"name": "brighter Cloud", "id": "A000"},
     ]
     results = [acc for acc in matched if account_name.lower() in acc["name"].lower()]
 
@@ -68,8 +69,12 @@ def list_contacts_for_account(account_name: str) -> dict:
             {"name": "John Doe", "email": "john@igus.com"},
             {"name": "Jane Smith", "email": "jane@igus.com"},
         ],
+        "Brighter Cloud": [
+            {"name": "Frank Heller", "email": "john@igus.com"},
+        ],
     }
-    matched = contacts.get(account_name, [])
+    contacts_lower = {k.lower(): v for k, v in contacts.items()}
+    matched = contacts_lower.get(account_name.lower(), [])
     return {"contacts": matched}
 
 
