@@ -9,15 +9,17 @@ import json
 import webrtcvad
 import datetime
 
+from simple_salesforce import Salesforce
 from openai import AsyncAzureOpenAI
 from tools import (
     find_account_by_name,
     list_contacts_for_account,
     prepare_for_upload,
+    upload_visit_report,
     TOOLS,
-    TOOL_MAP,
 )
 from models import VisitReport
+from functools import partial
 
 
 class VoiceAssistant:
@@ -29,10 +31,22 @@ class VoiceAssistant:
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
             api_version="2025-04-01-preview",
         )
+        self.sf = Salesforce(
+            username=os.getenv("SF_USER"),
+            password=os.getenv("SF_PASSWORD"),
+            security_token=os.getenv("SF_TOKEN"),
+            domain="test",
+        )
         self.connection = None
         self.vad = webrtcvad.Vad(2)
         self.frame_duration = 30
         self.silence_timeout = 1.5
+        self.TOOL_MAP = {
+            "find_account_by_name": partial(find_account_by_name, self.sf),
+            "list_contacts_for_account": partial(list_contacts_for_account, sf=self.sf),
+            "prepare_for_upload": prepare_for_upload,
+            "upload_visit_report": partial(upload_visit_report, sf=self.sf),
+        }
 
     def record_until_silence(self):
         frame_size = int(self.sample_rate * self.frame_duration / 1000)
@@ -95,7 +109,7 @@ class VoiceAssistant:
 
                 print(f"\n[TOOL CALL] {name}({arguments})")
 
-                tool_func = TOOL_MAP[name]
+                tool_func = self.TOOL_MAP[name]
                 result = tool_func(**arguments)
 
                 print(f"[TOOL RESULT] {result}")
@@ -180,21 +194,24 @@ class VoiceAssistant:
                 "instructions": f"""
 Today's date is {datetime.datetime.today().date()}.
 
+Do always respond with the same language as the user.
+
 You are a voice agent for creating customer visit reports in the format of the VisitReport model: {VisitReport.model_json_schema()}.
 
 ---
 
 ## Goal
-- Gather all required VisitReport fields from the user in a conversational way.
+- Gather all required VisitReport fields from the user in a conversational way, always with help of the tools
 - Do not request them one by one; instead, ask for all missing information together.
 - Validate **AccountName** and **PrimaryContact** using the correct tools before accepting them into the report.
+- Make the information about the visit ready for Upload by using the tool `prepare_for_upload`.
 
 ---
 
 ## MANDATORY TOOL CALL RULES
 
-You must ALWAYS use the following tools exactly as described.  
-Do not record AccountName or PrimaryContact without first validating through the tools.  
+***You must ALWAYS use the following tools exactly as described.***  
+***Do not record AccountName or PrimaryContact without first validating through the tools. ***  
 Never guess — only trust tool output and user confirmation.
 
 1. **If the user gives an AccountName** →  
@@ -225,19 +242,14 @@ Never guess — only trust tool output and user confirmation.
 
 - **Location** and **Division**: Accept any variation, but record exactly what was said.
 
-- **Machines**:  
-  - If mentioned anywhere (Subject, Description, or elsewhere) → list them in `machines` field.  
-  - If none mentioned → set `machines` to `None`.
-
-- **Description**: Summarize what the user described in your own words.
+- **Description**: Summarize what the user described in your own words, avoid using personal pronouns.
 
 ---
 
 ## Output Rules
 1. When all fields are collected:  
-   - Create a short, friendly spoken summary weaving all facts into 2–3 sentences.  
+   - Create a short, friendly spoken summary weaving all facts into 2–3 sentences, do not explicitly confirm tool lookup results, unless you need to ask for clarification.  
    - Do not list fields — make it sound like everyday conversation.  
-   - Always include `"machines"`, even if it's `"None"`.
    - Keep all details accurate.
 
 2. After summary:  

@@ -27,6 +27,3 @@ class VisitReport(BaseModel):
     description: str = Field(
         ..., description="Detailed description of the meeting content."
     )
-    machines: Optional[str] = Field(
-        None, description="(Optional) Machines that were discussed during the meeting."
-    )

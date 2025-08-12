@@ -5,8 +5,11 @@ import base64
 import numpy as np
 import io
 import wave
+import librosa
+import soundfile as sf
 from dotenv import load_dotenv
-from assistant_class import VoiceAssistant
+from streamlit_mic_recorder import mic_recorder
+from assistant_class import VoiceAssistant  # your existing class
 
 load_dotenv()
 nest_asyncio.apply()
@@ -32,29 +35,22 @@ def get_assistant():
 
 
 def convert_audio_to_base64(audio_bytes):
-    if audio_bytes is None:
-        return None
-
     try:
-        audio_data = np.frombuffer(audio_bytes, dtype=np.float32)
-        audio_int16 = (audio_data * 32767).astype(np.int16)
+        import soundfile as sf
 
-        buf = io.BytesIO()
-        with wave.open(buf, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(16000)
-            wf.writeframes(audio_int16.tobytes())
-
-        wav_data = buf.getvalue()
-        return base64.b64encode(wav_data).decode("utf-8")
+        audio_data, sr = sf.read(io.BytesIO(audio_bytes))
+        if sr != 16000:
+            audio_data = librosa.resample(audio_data, orig_sr=sr, target_sr=16000)
+        buf_out = io.BytesIO()
+        sf.write(buf_out, audio_data, 16000, format="WAV", subtype="PCM_16")
+        return base64.b64encode(buf_out.getvalue()).decode("utf-8")
     except Exception as e:
         st.error(f"Audio conversion error: {str(e)}")
         return None
 
 
 def main():
-    st.title("Voice Assistant Chat")
+    st.title("Azure OpenAI Voice Assistant (Mic Recorder)")
 
     if "state" not in st.session_state:
         st.session_state.state = SessionState()
@@ -73,6 +69,7 @@ def main():
             st.session_state.state.messages = []
             st.rerun()
 
+    # Display chat history
     for message in st.session_state.state.messages:
         with st.chat_message(message["role"]):
             st.write(message["content"])
@@ -95,61 +92,52 @@ def main():
                         st.write(response)
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
-
             st.rerun()
 
     elif mode == "Voice":
-        st.info("Click the microphone button below to record your message")
+        st.info("Click Record, speak, then Stop to send your message")
 
-        audio_bytes = st.audio_input("Record your voice message")
+        audio_data = mic_recorder(
+            start_prompt="🎙️ Record",
+            stop_prompt="⏹️ Stop",
+            just_once=True,
+            format="wav",
+            key="recorder",
+        )
 
-        if audio_bytes is not None:
-            st.audio(audio_bytes, format="audio/wav")
+        # Save to session state so we don't lose it on rerun
+        if audio_data and "bytes" in audio_data:
+            st.session_state.last_audio = audio_data
 
-            col1, col2 = st.columns(2)
+        if "last_audio" in st.session_state:
+            audio_data = st.session_state.last_audio
+            base64_audio = convert_audio_to_base64(audio_data["bytes"])
+            if base64_audio:
+                st.session_state.state.messages.append(
+                    {"role": "user", "content": "🎙️ Voice message"}
+                )
+                with st.chat_message("user"):
+                    st.write("🎙️ Voice message")
+                    st.audio(audio_data["bytes"], format="audio/wav")
 
-            with col1:
-                if st.button(
-                    "🎙️ Send Voice Message", type="primary", use_container_width=True
-                ):
-                    base64_audio = convert_audio_to_base64(audio_bytes)
-
-                    if base64_audio:
-                        st.session_state.state.messages.append(
-                            {"role": "user", "content": "🎙️ Voice message"}
+                with st.spinner("Processing voice message..."):
+                    try:
+                        response = st.session_state.state.loop.run_until_complete(
+                            st.session_state.state.assistant.interact(
+                                "voice", base64_audio
+                            )
                         )
+                        st.session_state.state.messages.append(
+                            {"role": "assistant", "content": response}
+                        )
+                        with st.chat_message("assistant"):
+                            st.write(response)
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
 
-                        with st.chat_message("user"):
-                            st.write("🎙️ Voice message")
-                            st.audio(audio_bytes, format="audio/wav")
-
-                        with st.spinner("Processing voice message..."):
-                            try:
-                                response = (
-                                    st.session_state.state.loop.run_until_complete(
-                                        st.session_state.state.assistant.interact(
-                                            "voice", base64_audio
-                                        )
-                                    )
-                                )
-                                st.session_state.state.messages.append(
-                                    {"role": "assistant", "content": response}
-                                )
-
-                                with st.chat_message("assistant"):
-                                    st.write(response)
-
-                                st.success("Voice message processed!")
-                            except Exception as e:
-                                st.error(f"Error: {str(e)}")
-
-                        st.rerun()
-                    else:
-                        st.error("Failed to process audio")
-
-            with col2:
-                if st.button("🗑️ Clear Recording", use_container_width=True):
-                    st.rerun()
+            # Clear after processing so it doesn't reprocess
+            del st.session_state.last_audio
+            st.rerun()
 
 
 if __name__ == "__main__":

@@ -1,81 +1,50 @@
 import datetime
+from simple_salesforce import Salesforce
 from models import VisitReport
+from functools import partial
 
 
-def create_visit_report(data: VisitReport) -> dict:
-    summary_lines = [
-        f"Contact Name: {data.contact_name}",
-        f"Company Name: {data.company_name}",
-        f"Phone: {data.phone}",
-        f"Date: {data.date}",
-    ]
-
-    if data.favorite_drink:
-        summary_lines.append(f"Favorite Drink: {data.favorite_drink}")
-
-    summary = "\n".join(summary_lines)
-
-    print("\n[TOOL] Visit report created:")
-    print(summary)
-
-    return {
-        "status": "success",
-        "summary": summary,
-    }
-
-
-def write_visit_report_to_file(data: VisitReport, filename: str) -> None:
-    with open(filename, "w") as file:
-        file.write(f"Contact Name: {data.contact_name}\n")
-        file.write(f"Company Name: {data.company_name}\n")
-        file.write(f"Phone: {data.phone}\n")
-        file.write(f"Date: {data.date}\n")
-        if data.favorite_drink:
-            file.write(f"Favorite Drink: {data.favorite_drink}\n")
-
-
-def find_account_by_name(account_name: str) -> dict:
-    matched = [
-        {"name": "igus GmbH", "id": "A001"},
-        {"name": "igus North America", "id": "A002"},
-        {"name": "brighter Cloud", "id": "A000"},
-    ]
-    results = [acc for acc in matched if account_name.lower() in acc["name"].lower()]
+def find_account_by_name(sf: Salesforce, account_name: str) -> dict:
+    query = f"SELECT Id, Name FROM Account WHERE Name LIKE '%{account_name}%'"
+    results = sf.query(query)["records"]
 
     if len(results) == 1:
         return {
             "status": "single_found",
-            "account_name": results[0]["name"],
-            "account_id": results[0]["id"],
+            "account_name": results[0]["Name"],
+            "account_id": results[0]["Id"],
         }
     elif len(results) > 1:
+        matched_accounts = [{"name": r["Name"], "id": r["Id"]} for r in results]
         return {
             "status": "multiple_found",
-            "matched_accounts": results,
+            "matched_accounts": matched_accounts,
         }
     else:
-        return {
-            "status": "not_found",
-        }
+        return {"status": "not_found"}
 
 
-def list_contacts_for_account(account_name: str) -> dict:
-    contacts = {
-        "igus GmbH": [
-            {"name": "Max Mustermann", "email": "max@igus.de"},
-            {"name": "Erika Beispiel", "email": "erika@igus.de"},
-        ],
-        "igus North America": [
-            {"name": "John Doe", "email": "john@igus.com"},
-            {"name": "Jane Smith", "email": "jane@igus.com"},
-        ],
-        "Brighter Cloud": [
-            {"name": "Frank Heller", "email": "john@igus.com"},
-        ],
-    }
-    contacts_lower = {k.lower(): v for k, v in contacts.items()}
-    matched = contacts_lower.get(account_name.lower(), [])
-    return {"contacts": matched}
+def list_contacts_for_account(sf: Salesforce, account_name: str) -> dict:
+    account_query = f"SELECT Id FROM Account WHERE Name LIKE '%{account_name}%'"
+    account_results = sf.query(account_query)["records"]
+
+    if not account_results:
+        return {"contacts": []}
+
+    account_ids = [acc["Id"] for acc in account_results]
+    ids_str = ",".join(f"'{acc_id}'" for acc_id in account_ids)
+
+    contact_query = f"""
+        SELECT Name, Email
+        FROM Contact
+        WHERE AccountId IN ({ids_str})
+    """
+    contact_results = sf.query(contact_query)["records"]
+
+    contacts = [
+        {"name": c.get("Name"), "email": c.get("Email")} for c in contact_results
+    ]
+    return {"contacts": contacts}
 
 
 def prepare_for_upload(
@@ -86,7 +55,6 @@ def prepare_for_upload(
     division: str,
     subject: str,
     description: str,
-    machines: str,
 ) -> dict:
     return {
         "AccountName__c": account_name,
@@ -96,33 +64,63 @@ def prepare_for_upload(
         "Division__c": division,
         "Subject__c": subject,
         "Description__c": description,
-        "Machines__c": machines,
     }
+
+
+def upload_visit_report(sf: Salesforce, report_data: dict):
+    object_api_name = "Visit_Report__c"
+
+    payload = {
+        "Account__c": report_data.get("AccountId"),
+        "Primary_Contact__c": report_data.get("PrimaryContactId"),
+        "Visit_Date__c": report_data.get("Date"),
+        "Visit_Location__c": report_data.get("Location"),
+        "Related_Product_Division__c": report_data.get("Division"),
+        "Name": report_data.get("Subject"),
+        "Description__c": report_data.get("Description"),
+    }
+
+    result = sf.__getattr__(object_api_name).create(payload)
+    return result
 
 
 TOOLS = [
     {
         "type": "function",
         "name": "find_account_by_name",
-        "description": "Searches accounts/company by name to prove their validity.",
+        "description": "Searches Salesforce for accounts whose names contain the given string and returns either a single match, multiple matches, or a not-found status.",
         "parameters": {
             "type": "object",
             "properties": {
-                "account_name": {"type": "string"},
+                "sf": {
+                    "type": "object",
+                    "description": "An authenticated Salesforce client instance from simple_salesforce.",
+                },
+                "account_name": {
+                    "type": "string",
+                    "description": "Full or partial name of the account to search for.",
+                },
             },
-            "required": ["account_name"],
+            "required": ["sf", "account_name"],
         },
     },
     {
         "type": "function",
         "name": "list_contacts_for_account",
-        "description": "Lists contacts for a account/company name to prove their validity.",
+        "description": "Retrieves contacts from Salesforce linked to accounts whose names contain the given string.",
         "parameters": {
             "type": "object",
             "properties": {
-                "account_name": {"type": "string"},
+                "sf": {
+                    "type": "object",
+                    "description": "An authenticated Salesforce client instance from simple_salesforce.",
+                },
+                "account_name": {
+                    "type": "string",
+                    "description": "Full or partial name of the account whose contacts should be listed.",
+                },
             },
-            "required": ["account_name"],
+            "required": ["sf", "account_name"],
         },
     },
     {
@@ -178,10 +176,52 @@ TOOLS = [
             ],
         },
     },
+    {
+        "type": "function",
+        "name": "upload_visit_report",
+        "description": "Uploads a structured visit report to the Salesforce Visit_Report__c object.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "account_id": {
+                    "type": "string",
+                    "description": "Salesforce record ID of the Account (starts with '001').",
+                },
+                "primary_contact_id": {
+                    "type": "string",
+                    "description": "Salesforce record ID of the Primary Contact (starts with '003').",
+                },
+                "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Date of the meeting (YYYY-MM-DD).",
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Picklist value for the Visit_Location__c field.",
+                },
+                "division": {
+                    "type": "string",
+                    "description": "Picklist value for Related_Product_Division__c.",
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "Subject or title of the meeting (stored in Name field).",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Detailed description of the meeting.",
+                },
+            },
+            "required": [
+                "account_id",
+                "primary_contact_id",
+                "date",
+                "location",
+                "division",
+                "subject",
+                "description",
+            ],
+        },
+    },
 ]
-
-TOOL_MAP = {
-    "find_account_by_name": find_account_by_name,
-    "list_contacts_for_account": list_contacts_for_account,
-    "prepare_for_upload": prepare_for_upload,
-}
