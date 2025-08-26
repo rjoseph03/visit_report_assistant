@@ -35,49 +35,39 @@ def list_contacts_for_account(sf: Salesforce, account_name: str) -> dict:
     ids_str = ",".join(f"'{acc_id}'" for acc_id in account_ids)
 
     contact_query = f"""
-        SELECT Name, Email
+        SELECT Name, Email, Id
         FROM Contact
         WHERE AccountId IN ({ids_str})
     """
     contact_results = sf.query(contact_query)["records"]
 
     contacts = [
-        {"name": c.get("Name"), "email": c.get("Email")} for c in contact_results
+        {"name": c.get("Name"), "email": c.get("Email"), "Id": c.get("Id")}
+        for c in contact_results
     ]
     return {"contacts": contacts}
 
 
-def prepare_for_upload(
-    account_name: str,
-    primary_contact: str,
+def upload_visit_report(
+    sf: Salesforce,
+    account_id: str,
+    primary_contact_id: str,
     date: datetime.date,
     location: str,
     division: str,
     subject: str,
     description: str,
-) -> dict:
-    return {
-        "AccountName__c": account_name,
-        "PrimaryContact__c": primary_contact,
-        "Date__c": date,
-        "Location__c": location,
-        "Division__c": division,
-        "Subject__c": subject,
-        "Description__c": description,
-    }
-
-
-def upload_visit_report(sf: Salesforce, report_data: dict):
+):
     object_api_name = "Visit_Report__c"
 
     payload = {
-        "Account__c": report_data.get("AccountId"),
-        "Primary_Contact__c": report_data.get("PrimaryContactId"),
-        "Visit_Date__c": report_data.get("Date"),
-        "Visit_Location__c": report_data.get("Location"),
-        "Related_Product_Division__c": report_data.get("Division"),
-        "Name": report_data.get("Subject"),
-        "Description__c": report_data.get("Description"),
+        "Account__c": account_id,
+        "Primary_Contact__c": primary_contact_id,
+        "Visit_Date__c": date,
+        "Visit_Location__c": location,
+        "Related_Product_Division__c": division,
+        "Name": subject,
+        "Description__c": description,
     }
 
     result = sf.__getattr__(object_api_name).create(payload)

@@ -1,7 +1,6 @@
 import datetime
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional
 
 
 class VisitReport(BaseModel):
@@ -10,20 +9,26 @@ class VisitReport(BaseModel):
         BEARINGS = "bearings"
         ECHAIN_BEARINGS = "e-chain&bearings"
 
-    account_name: str = Field(..., description="Company the meeting was with.")
-    primary_contact: str = Field(
+    class Location(str, Enum):
+        REMOTE = "Remote"
+        CLIENT = "Client"
+        AT_IGUS = "At igus"
+        OTHER = "Other"
+
+    Account__c: str = Field(..., description="Company the meeting was with.")
+    Primary_Contact__c: str = Field(
         ..., description="Primary contact person for the meeting."
     )
-    date: datetime.date = Field(..., description="Date of the meeting.")
-    location: str = Field(
+    Visit_Date__c: datetime.date = Field(..., description="Date of the meeting.")
+    Visit_Location__c: Location = Field(
         ...,
         description="Location of the meeting. Main options: remote, client, igus, other.",
     )
-    division: Division = Field(
+    Related_Product_Division__c: Division = Field(
         ...,
         description="Division involved. Main options: e-chain, bearings, e-chain&bearings.",
     )
-    subject: str = Field(..., description="Subject or title of the meeting.")
-    description: str = Field(
+    Name: str = Field(..., description="Subject or title of the meeting.")
+    Description__c: str = Field(
         ..., description="Detailed description of the meeting content."
     )
