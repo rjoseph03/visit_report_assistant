@@ -22,11 +22,11 @@ class VisitReport(BaseModel):
     Visit_Date__c: datetime.date = Field(..., description="Date of the meeting.")
     Visit_Location__c: Location = Field(
         ...,
-        description="Location of the meeting. Main options: remote, client, igus, other.",
+        description="Location of the meeting. Only allowed options: remote, client, igus, other.",
     )
     Related_Product_Division__c: Division = Field(
         ...,
-        description="Division involved. Main options: e-chain, bearings, e-chain&bearings.",
+        description="Division involved. Only allowed options: e-chain, bearings, e-chain&bearings.",
     )
     Name: str = Field(..., description="Subject or title of the meeting.")
     Description__c: str = Field(
