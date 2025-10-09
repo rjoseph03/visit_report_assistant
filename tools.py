@@ -115,59 +115,6 @@ TOOLS = [
     },
     {
         "type": "function",
-        "name": "prepare_for_upload",
-        "description": f"Processes data gathered for a visit report to prepare it for upload.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "account_name": {
-                    "type": "string",
-                    "description": "Company the meeting was with.",
-                },
-                "primary_contact": {
-                    "type": "string",
-                    "description": "Primary contact person for the meeting.",
-                },
-                "date": {
-                    "type": "string",
-                    "format": "date",
-                    "description": "Date of the meeting (YYYY-MM-DD).",
-                },
-                "location": {
-                    "type": "string",
-                    "description": "Location of the meeting.",
-                },
-                "division": {
-                    "type": "string",
-                    "description": "Division involved in the meeting.",
-                },
-                "subject": {
-                    "type": "string",
-                    "description": "Subject or title of the meeting.",
-                },
-                "description": {
-                    "type": "string",
-                    "description": "Detailed description of the meeting.",
-                },
-                "machines": {
-                    "type": "string",
-                    "description": "Optional: machines discussed during the meeting.",
-                    "nullable": True,
-                },
-            },
-            "required": [
-                "account_name",
-                "primary_contact",
-                "date",
-                "location",
-                "division",
-                "subject",
-                "description",
-            ],
-        },
-    },
-    {
-        "type": "function",
         "name": "upload_visit_report",
         "description": "Uploads a structured visit report to the Salesforce Visit_Report__c object.",
         "parameters": {
