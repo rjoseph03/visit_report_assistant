@@ -1,7 +1,5 @@
 import datetime
 from simple_salesforce import Salesforce
-from models import VisitReport
-from functools import partial
 
 
 def find_account_by_name(sf: Salesforce, account_name: str) -> dict:

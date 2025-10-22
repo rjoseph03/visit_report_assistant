@@ -30,5 +30,6 @@ class VisitReport(BaseModel):
     )
     Name: str = Field(..., description="Subject or title of the meeting.")
     Description__c: str = Field(
-        ..., description="Detailed description of the meeting content."
+        ...,
+        description="Detailed description of the meeting content. Information about machines and possible revenue must be included.",
     )
